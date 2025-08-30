@@ -1,0 +1,65 @@
+#device: "cuda"  # set dynamically in code based on availability
+#use_amp: true   # set dynamically in code based on CUDA
+
+id_col: "SeriesInstanceUID"
+
+label_cols:
+  - "Left Infraclinoid Internal Carotid Artery"
+  - "Right Infraclinoid Internal Carotid Artery"
+  - "Left Supraclinoid Internal Carotid Artery"
+  - "Right Supraclinoid Internal Carotid Artery"
+  - "Left Middle Cerebral Artery"
+  - "Right Middle Cerebral Artery"
+  - "Anterior Communicating Artery"
+  - "Left Anterior Cerebral Artery"
+  - "Right Anterior Cerebral Artery"
+  - "Left Posterior Communicating Artery"
+  - "Right Posterior Communicating Artery"
+  - "Basilar Tip"
+  - "Other Posterior Circulation"
+  - "Aneurysm Present"
+
+paths:
+  train_csv: "C:/Users/Setup Game/Music/Favorites/Downloads/rsna_subset/train.csv"
+  series_dir: "C:/Users/Setup Game/Music/Favorites/Downloads/rsna_subset/series"
+
+processing:
+  target_size: [64, 64, 64]      # (D, H, W)
+  target_spacing_mm: 1.0          # isotropic resample
+  cta_window: [300.0, 700.0]      # (center, width)
+  mri_z_clip: 3.0                 # clip z-score ±3σ
+
+training:
+  do_train: true
+  epochs: 10
+  batch_size: 4
+  lr: 0.001
+  weight_decay: 0.00001
+  aneurysm_present_boost: 1.0
+  patience: 2
+
+runtime:
+  train_max_series: 128
+  val_max_series: 64
+  num_workers_train: 0
+  num_workers_val: 0
+  pin_memory: true
+  persistent_workers: false
+  lru_capacity: 8
+
+columns:
+  ap_col: "Aneurysm Present"
+  loc_cols:
+    - "Left Infraclinoid Internal Carotid Artery"
+    - "Right Infraclinoid Internal Carotid Artery"
+    - "Left Supraclinoid Internal Carotid Artery"
+    - "Right Supraclinoid Internal Carotid Artery"
+    - "Left Middle Cerebral Artery"
+    - "Right Middle Cerebral Artery"
+    - "Anterior Communicating Artery"
+    - "Left Anterior Cerebral Artery"
+    - "Right Anterior Cerebral Artery"
+    - "Left Posterior Communicating Artery"
+    - "Right Posterior Communicating Artery"
+    - "Basilar Tip"
+    - "Other Posterior Circulation"
