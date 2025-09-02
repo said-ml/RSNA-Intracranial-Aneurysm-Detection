@@ -1,13 +1,13 @@
 import os
-from typing import Optional, Callable, Tuple, Union, List
+from typing import Optional, Callable, Tuple, List
 import torch
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import DataLoader
 import numpy as np
 import pandas as pd
 
 print(f' cuda is availabe {torch.cuda.is_available()} ')
 #local imports
-from data.augmentations import augment_3d_volume
+from src.data import augment_3d_volume
 
 
 print('local imports is OK')
