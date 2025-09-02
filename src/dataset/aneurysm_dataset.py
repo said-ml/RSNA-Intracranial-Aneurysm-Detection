@@ -5,8 +5,13 @@ from torch.utils.data import Dataset, DataLoader
 import numpy as np
 import pandas as pd
 
+print(f' cuda is availabe {torch.cuda.is_available()} ')
 #local imports
 from data.augmentations import augment_3d_volume
+
+
+print('local imports is OK')
+exit()
 
 class AneurysmDataset(Dataset):
     def __init__(self,

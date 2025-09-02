@@ -394,3 +394,8 @@ if labels_map is not None:
 
 print("All done. Zips at:", BATCH_ZIP_DIR)
 print("Total produced files (zipped):", len(all_outs), "failures:", len(all_failures))
+
+
+
+#he above data processing is used to transform .dcm files.npz files to reduce data with difference target size
+# next we must assemble the 8 .zip files in one
