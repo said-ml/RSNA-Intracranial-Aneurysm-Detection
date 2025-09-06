@@ -1,17 +1,19 @@
+
 import os
-from typing import Optional, Callable, Tuple, List
+from typing import Optional, Callable, Tuple, List, Union
 import torch
 from torch.utils.data import DataLoader
+from torch.utils.data import Dataset
 import numpy as np
 import pandas as pd
 
-print(f' cuda is availabe {torch.cuda.is_available()} ')
+#print(f' cuda is availabe {torch.cuda.is_available()} ')
 #local imports
-from src.data import augment_3d_volume
+from src.data.augmentations import augment_3d_volume
 
 
-print('local imports is OK')
-exit()
+#print('local imports is OK')
+#exit()
 
 class AneurysmDataset(Dataset):
     def __init__(self,
@@ -110,5 +112,4 @@ if __name__ == '__main__':
     for images, uids in test_loader:
         print(f"Images: {images.shape}, SeriesInstanceUIDs: {uids}")
         break
-
 

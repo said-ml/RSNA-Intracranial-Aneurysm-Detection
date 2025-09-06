@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Optional, List, Dict, Tuple
+from typing import Optional, List, Dict, Tuple,Any
 import os
 import torch
 from torch import nn, optim
@@ -10,6 +10,24 @@ from sklearn.metrics import roc_auc_score
 from tqdm import tqdm
 import numpy as np
 
+from transformers import get_cosine_schedule_with_warmup
+
+
+def get_max_norm(epoch, total_epochs):
+    if epoch < total_epochs * 0.2:       # first 20%
+        return 6.0
+    elif epoch < total_epochs * 0.6:     # middle 20%
+        return 4.0
+
+    elif epoch < total_epochs * 0.8:  # middle 20%
+        return 3.0
+
+    else:                                # last 40%
+        return 2.0
+
+# inside your training loop:
+
+
 class CVTrainer:
     def __init__(
         self,
@@ -19,14 +37,15 @@ class CVTrainer:
         optimizer: Optional[optim.Optimizer] = None,
         criterion_clf: Optional[nn.Module] = None,
         criterion_seg: Optional[nn.Module] = None,
-        scheduler: Optional[optim.lr_scheduler._LRScheduler] = None,
+        scheduler: Optional[optim.lr_scheduler._LRScheduler] = not True,
         device: Optional[torch.device] = None,
         use_amp: bool = True,
         gradient_accumulation_steps: int = 1,
         max_epochs: int = 10,
         save_dir: Optional[str] = None,
         segmentation: bool = not False,
-        use_clip_grad_norm:bool=True
+        use_clip_grad_norm:bool=True,
+
     )->None:
         self.model = model
         self.train_dataloader = train_dataloader
@@ -46,6 +65,12 @@ class CVTrainer:
         self.global_step = 0
         self.model.to(self.device)
         self.use_clip_grad_norm = use_clip_grad_norm
+        if scheduler:
+               self.scheduler = get_cosine_schedule_with_warmup(
+                                optimizer=self.optimizer,
+                                num_warmup_steps=55     ,#self.warmup_steps,
+                                num_training_steps=1150#self.total_steps,
+                            )
 
     def train_one_epoch(self, epoch: int) -> None:
         self.model.train()
@@ -69,7 +94,10 @@ class CVTrainer:
             if cls_labels.ndim == 1:
                 cls_labels = cls_labels.unsqueeze(0)
 
-            with autocast(enabled=self.use_amp, device_type="cuda"):
+            #with autocast(enabled=self.use_amp, device_type="cuda"):
+            from torch import autocast
+            from contextlib import nullcontext
+            with autocast('cuda') if self.use_amp else nullcontext():
                 cls_out, seg_out = self.model(images)
 
                 # classification loss
@@ -88,8 +116,11 @@ class CVTrainer:
             else:
                 loss.backward()
 
+            #if self.use_clip_grad_norm:
+                #clip_grad_norm(self.model.parameters(), max_norm=5.0)
             if self.use_clip_grad_norm:
-                clip_grad_norm(self.model.parameters(), max_norm=5.0)
+                    max_norm = get_max_norm(epoch, self.max_epochs)
+                    clip_grad_norm(self.model.parameters(), max_norm=max_norm)
 
             if (step + 1) % self.gradient_accumulation_steps == 0:
                 if self.use_amp:
@@ -130,14 +161,22 @@ class CVTrainer:
                 #cls_labels = cls_labels.to(self.device)
                # seg_labels = None
 
-           # for batch in pbar:
+            # for batch in pbar:
 
             images, seg_labels, cls_labels = batch
             images = images.to(self.device)
             cls_labels = cls_labels.to(self.device)
             seg_labels = seg_labels.to(self.device)
 
-            with autocast(enabled=self.use_amp, device_type='cuda'):
+            #added code
+            #seg_labels = seg_labels.unsqueeze(1)  # add channel dimension
+            ##
+            #with autocast(enabled=self.use_amp, device_type='cuda'):
+            from torch import autocast
+            from contextlib import nullcontext
+            with autocast('cuda') if self.use_amp else nullcontext():
+            # training code
+
                 cls_out, seg_out = self.model(images)
                 loss = self.criterion_cls(cls_out, cls_labels)
                 if self.segmentation and seg_out is not None and seg_labels is not None:
@@ -183,7 +222,7 @@ class CVTrainer:
 
 
 ##################################################################################################################
-
+"""
 from typing import Optional, Tuple, Dict
 import torch
 from torch import nn, optim
@@ -196,11 +235,11 @@ import numpy as np
 
 
 class CVTr1ainer:
-    """
-    HuggingFace-style Trainer for Computer Vision Kaggle Competitions.
-    Supports mixed precision, gradient accumulation, classification + segmentation.
-    Tracks validation AUC and saves the best checkpoint only.
-    """
+
+    #HuggingFace-style Trainer for Computer Vision Kaggle Competitions.
+    #Supports mixed precision, gradient accumulation, classification + segmentation.
+    #Tracks validation AUC and saves the best checkpoint only.
+    #
     def __init__(
         self,
         model: nn.Module,
@@ -382,3 +421,4 @@ class CVTr1ainer:
             val_loss, val_metrics = self.validate()
             print(f"Epoch {epoch} | Validation Loss: {val_loss:.4f} | Metrics: {val_metrics}")
             self.save_checkpoint(epoch, val_loss)
+"""

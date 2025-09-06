@@ -2,7 +2,7 @@ import torch
 from torch.utils.data import DataLoader
 from torch import nn, optim
 from src.dataset.aneurysm_dataset import AneurysmDataset
-from src.models.resnet3d import Aneurysm3DNet as ResNet3D  # your backbone
+from src.models.resnet3d import resnet18 as ResNet3D  # your backbone
 from src.training.trainer import CVTrainer  # your updated custom trainer class
 import os
 
@@ -35,10 +35,12 @@ if __name__ == '__main__':
     labels_csv = os.path.join(npz_dir, "labels.csv")
 
     train_dataset = AneurysmDataset(npz_dir, labels_csv=labels_csv, augment_fn=True, segmentation= not False)
-    val_dataset = AneurysmDataset(npz_dir, labels_csv=labels_csv, augment_fn=False, segmentation= not False)
+    val_dataset = AneurysmDataset(npz_dir, labels_csv=labels_csv, augment_fn=not False, segmentation= not False)
 
-    train_loader = DataLoader(train_dataset, batch_size=8, shuffle=True, num_workers=4, pin_memory=True)
-    val_loader = DataLoader(val_dataset, batch_size=8, shuffle=False, num_workers=4, pin_memory=True)
+    train_loader = DataLoader(train_dataset, batch_size=16, shuffle=True, num_workers=4, pin_memory=True)
+    #
+    print(f'length of data loader is {len(train_loader)}')
+    val_loader = DataLoader(val_dataset, batch_size=16, shuffle=False, num_workers=4, pin_memory=True)
 
     # =============================
     # Model
@@ -51,12 +53,17 @@ if __name__ == '__main__':
     # =============================
     # Loss and Optimizer
     # =============================
-    criterion_clf = nn.BCEWithLogitsLoss()
+    #criterion_clf = nn.BCEWithLogitsLoss()
     from src.training.losses import SoftDiceLoss
     criterion_seg = SoftDiceLoss()
     from src.training.losses import  FocalLoss
-    #criterion =  FocalLoss()
-    optimizer = optim.AdamW(model.parameters(), lr=1e-3, weight_decay=1e-4)
+
+
+    criterion_clf = FocalLoss(alpha=0.43, gamma=3.0)
+
+    #criterion_clf =  FocalLoss()
+    optimizer = optim.AdamW(model.parameters(), lr=3e-5
+                            , weight_decay=1e-5)
 
     # =============================
     # CVTrainer setup
@@ -71,8 +78,9 @@ if __name__ == '__main__':
         device=device,
         gradient_accumulation_steps=4,
         use_amp=True,
-        max_epochs=5,
+        max_epochs=75,
         save_dir="checkpoints"  # CVTrainer will handle saving
     )
 
     trainer.fit()   # CVTrainer now manages epochs, training, validation & checkpoint saving
+

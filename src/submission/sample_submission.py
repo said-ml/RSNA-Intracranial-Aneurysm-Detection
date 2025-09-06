@@ -1,6 +1,7 @@
 import torch
 import pandas as pd
 from torch.utils.data import DataLoader
+from src.models.resnet3d import resnet50 as Aneurysm3DNet
 import pandas as pd
 LABEL_COLS = [
     "Left Infraclinoid Internal Carotid Artery",
@@ -20,7 +21,7 @@ LABEL_COLS = [
 ]
 df = pd.read_csv(r"C:/Users/Setup Game/Music/Favorites/Downloads/rsna_preprocessed_segmentation/labels.csv")
 labels = df[LABEL_COLS].values.astype(float)
-print(f'labels shape={labels}');exit()
+#print(f'labels shape={labels}')
 ##########################################################################################################################################################
 import torch
 import torch.nn as nn
@@ -166,15 +167,17 @@ LABEL_COLS = [
     "Aneurysm Present",
 ]
 
-
+import polars as pl
 def create_submission_df(probs_tensor, series_uids):
     probs_np = probs_tensor.detach().cpu().numpy()
-    df = pd.DataFrame(probs_np, columns=LABEL_COLS)
+    #df = pd.DataFrame(probs_np, columns=LABEL_COLS)
 
-    location_probs = probs_tensor[:, :-1]
-    present_probs = 1 - torch.prod(1 - location_probs, dim=1)
-    df["Aneurysm Present"] = present_probs.detach().cpu().numpy()
-    df.insert(0, "SeriesInstanceUID", series_uids)
+    # Create output dataframe
+    df = pl.DataFrame(
+        data=[ probs_np.tolist()],
+        schema=LABEL_COLS,
+        orient='row'
+    )
     return df
 
 
@@ -184,7 +187,7 @@ def create_submission_df(probs_tensor, series_uids):
 if __name__ == "__main__":
     device = "cuda" if torch.cuda.is_available() else "cpu"
     from src.dataset.aneurysm_dataset import AneurysmDataset
-    from src.models.resnet3d import Aneurysm3DNet
+    #from src.models.resnet3d import Aneurysm3DNet
 
     npz_dir = r"C:/Users/Setup Game/Music/Favorites/Downloads/rsna_preprocessed_segmentation"
     test_dataset = AneurysmDataset(npz_dir=npz_dir, mode="test")

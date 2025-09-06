@@ -7,7 +7,7 @@ from torch import nn
 import torch.nn.functional as F
 
 # LOACL IMPORTS
-from src.configurations import LABEL_COLS
+from configs import LABEL_COLS
 
 class Simple3DCNN(nn.Module):
     """Lightweight 3D CNN for multi-label classification (returns logits)."""

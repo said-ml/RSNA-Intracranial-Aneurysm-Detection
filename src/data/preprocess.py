@@ -396,6 +396,50 @@ print("All done. Zips at:", BATCH_ZIP_DIR)
 print("Total produced files (zipped):", len(all_outs), "failures:", len(all_failures))
 
 
-
 #he above data processing is used to transform .dcm files.npz files to reduce data with difference target size
-# next we must assemble the 8 .zip files in one
+# next we must assemble the 8 .zip files into one unzip file
+
+import os, glob, zipfile
+import numpy as np
+from pathlib import Path
+
+BATCH_ZIP_DIR  = "/kaggle/working/rsna-zips-compact"  # i'll change this later
+MERGED_OUT     = "/kaggle/working/rsna_all_data.npz"  # i'll change this later
+
+
+
+def merge_npz_from_zips(zip_dir, merged_out):
+    images, masks, labels, uids = [], [], [], []
+
+    zip_files = sorted(glob.glob(os.path.join(zip_dir, "*.zip")))
+    print(f"Found {len(zip_files)} zip batches")
+
+    for zf_path in zip_files:
+        with zipfile.ZipFile(zf_path, "r") as zf:
+            for fname in zf.namelist():
+                if not fname.endswith(".npz"):
+                    continue
+                uid = Path(fname).stem
+                with zf.open(fname) as f:
+                    data = np.load(f, allow_pickle=True)
+                    images.append(data["image"])
+                    masks.append(data["mask"])
+                    if "labels" in data:
+                        labels.append(data["labels"])
+                    else:
+                        labels.append(None)
+                    uids.append(uid)
+
+    images = np.array(images)   # shape: (N, C, D, H, W)
+    masks  = np.array(masks)    # shape: (N, D, H, W)
+    labels = np.array(labels, dtype=object)  # ragged safe
+    uids   = np.array(uids)
+
+    np.savez_compressed(merged_out,
+                        images=images,
+                        masks=masks,
+                        labels=labels,
+                        uids=uids)
+    print(f"Saved merged dataset: {merged_out} | size={len(images)} series")
+
+merge_npz_from_zips(BATCH_ZIP_DIR, MERGED_OUT)
