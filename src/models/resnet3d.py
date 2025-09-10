@@ -207,7 +207,7 @@ class ResNet3D(nn.Module):
                 nn.ReLU(inplace=True),
                 nn.ConvTranspose3d(128, 64, 2, stride=2),
                 nn.ReLU(inplace=True),
-                nn.Conv3d(64, num_classes, 1)
+                nn.Conv3d(64, 1, 1)
             )
             self.seg_head2 = nn.Sequential(  # this for resnet50
                 nn.ConvTranspose3d(
@@ -218,7 +218,7 @@ class ResNet3D(nn.Module):
                 nn.Conv3d(32, 32, kernel_size=3, padding=1, bias=False),
                 nn.BatchNorm3d(32),
                 nn.ReLU(inplace=True),
-                nn.Conv3d(32, 14, kernel_size=1, bias=False)
+                nn.Conv3d(32, 1, kernel_size=1, bias=False)
             )
 
     def _make_layer(self, block, planes, blocks, stride=1, dilation=1):

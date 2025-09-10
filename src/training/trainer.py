@@ -12,6 +12,10 @@ import numpy as np
 
 from transformers import get_cosine_schedule_with_warmup
 
+from src.metric.for_cv import ReliableCVMetric
+from src.training.losses import MultiTaskLoss
+
+
 
 def get_max_norm(epoch, total_epochs):
     if epoch < total_epochs * 0.2:       # first 20%
@@ -37,6 +41,7 @@ class CVTrainer:
         optimizer: Optional[optim.Optimizer] = None,
         criterion_clf: Optional[nn.Module] = None,
         criterion_seg: Optional[nn.Module] = None,
+        metric: Optional[nn.Module]=None,
         scheduler: Optional[optim.lr_scheduler._LRScheduler] = not True,
         device: Optional[torch.device] = None,
         use_amp: bool = True,
@@ -71,14 +76,16 @@ class CVTrainer:
                                 num_warmup_steps=55     ,#self.warmup_steps,
                                 num_training_steps=1150#self.total_steps,
                             )
-
+        self.metric = metric
+        if self.segmentation:
+            self.criterion = MultiTaskLoss(alpha=.5, beta=1.0).to(self.device)
     def train_one_epoch(self, epoch: int) -> None:
         self.model.train()
         running_loss = 0.0
 
         pbar = tqdm(enumerate(self.train_dataloader), total=len(self.train_dataloader))
         for step, batch in pbar:
-            images, seg_labels, cls_labels = batch
+            images, seg_labels, cls_labels,series_uid = batch
             images = images.to(self.device)
             cls_labels = cls_labels.to(self.device)
             seg_labels = seg_labels.to(self.device)
@@ -104,9 +111,16 @@ class CVTrainer:
                 loss = self.criterion_cls(cls_out, cls_labels)
 
                 # segmentation loss (optional)
+
                 if self.segmentation and seg_out is not None and seg_labels is not None:
-                    loss_seg = self.criterion_seg(seg_out, seg_labels)
-                    loss += 1.0 * loss_seg
+                    #loss_seg = self.criterion_seg(seg_out, seg_labels)
+                    ########++++++++++++=====> added code=========
+                    loss, cls_loss, seg_loss = self.criterion(cls_out, cls_labels, seg_out,seg_labels)
+                    #print(f'loss seg={seg_loss}')
+                    #print(f'classification loss={cls_loss}')
+                    #print(f'loss={loss}')
+                    loss += 1.0 * seg_loss
+
 
                 # scale for gradient accumulation
                 loss = loss / self.gradient_accumulation_steps
@@ -139,7 +153,7 @@ class CVTrainer:
             self.global_step += 1
 
     @torch.no_grad()
-    def validate(self) -> Tuple[float, Dict[str, float]]:
+    def validate1(self) -> Tuple[float, Dict[str, float]]:
         if self.val_dataloader is None:
             return 0.0, {}
 
@@ -163,7 +177,7 @@ class CVTrainer:
 
             # for batch in pbar:
 
-            images, seg_labels, cls_labels = batch
+            images, seg_labels, cls_labels,_ = batch
             images = images.to(self.device)
             cls_labels = cls_labels.to(self.device)
             seg_labels = seg_labels.to(self.device)
@@ -211,6 +225,186 @@ class CVTrainer:
             print(f"✅ Best checkpoint updated at {best_path} | Val Loss: {val_loss:.4f}")
 
         return val_loss, auc
+
+    from typing import Tuple, Dict
+    from contextlib import nullcontext
+    from tqdm import tqdm
+    import os
+    import torch
+    import numpy as np
+    from sklearn.metrics import roc_auc_score
+
+    @torch.no_grad()
+    def validate1(self) -> Tuple[float, Dict[str, float]]:
+        """
+        Run validation and update all metrics from ReliableCVMetric.
+        Returns:
+            val_loss: float
+            metrics: dict[str, float] (includes per-class AUC, overall RSNA metric)
+        """
+        if self.val_dataloader is None:
+            return 0.0, {}
+
+        self.model.eval()
+        val_loss = 0.0
+        all_labels = []
+        all_preds = []
+
+        for batch in tqdm(self.val_dataloader, desc="Validation"):
+            images, seg_labels, cls_labels = batch
+            images = images.to(self.device)
+            cls_labels = cls_labels.to(self.device)
+            seg_labels = seg_labels.to(self.device)
+
+            # autocast for mixed precision if enabled
+            from torch import autocast
+            from contextlib import nullcontext
+            with autocast('cuda') if self.use_amp else nullcontext():
+                cls_out, seg_out = self.model(images)
+                loss = self.criterion_cls(cls_out, cls_labels)
+                if self.segmentation and seg_out is not None and seg_labels is not None:
+                    loss_seg = self.criterion_seg(seg_out, seg_labels)
+                    loss += loss_seg
+
+            val_loss += loss.item() * images.size(0)
+
+            # store preds for metrics
+            all_labels.append(cls_labels.cpu().numpy())
+            all_preds.append(torch.sigmoid(cls_out).cpu().numpy())
+
+        val_loss /= len(self.val_dataloader.dataset)
+        all_labels = np.concatenate(all_labels, axis=0)
+        all_preds = np.concatenate(all_preds, axis=0)
+
+        metrics = {}
+        # Compute per-class AUC
+        if hasattr(self, 'metric') and isinstance(self.metric, ReliableCVMetric):
+            # Update ReliableCVMetric with a single fold/seed for validation
+            self.metric.reset()
+            self.metric.update(all_preds, all_labels, fold=0, seed=0)
+            self.metric.compute_fold_score(fold=0, seed=0)
+            metrics = self.metric.summary()
+        else:
+            # fallback: compute simple macro AUC
+            try:
+                metrics['AUC'] = roc_auc_score(all_labels, all_preds, average='macro')
+            except ValueError:
+                metrics['AUC'] = float('nan')
+
+        # Save best checkpoint
+        if val_loss < self.best_val_loss and self.save_dir is not None:
+            os.makedirs(self.save_dir, exist_ok=True)
+            best_path = os.path.join(self.save_dir, "best_model.pt")
+            torch.save({
+                'model_state_dict': self.model.state_dict(),
+                'optimizer_state_dict': self.optimizer.state_dict() if self.optimizer else None,
+                'scaler_state_dict': self.scaler.state_dict() if self.scaler else None,
+            }, best_path)
+            self.best_val_loss = val_loss
+            print(f"✅ Best checkpoint updated at {best_path} | Val Loss: {val_loss:.4f}")
+
+        return val_loss, metrics
+
+    @torch.no_grad()
+    def validate(self, fold=0, seed=0):
+        self.model.eval()
+        self.metric.reset()
+        val_losses = []
+
+        for batch in self.val_dataloader:
+            ########## adde code <=========
+            # inside validate loop
+            if self.segmentation:
+                inputs, masks, targets, patient_ids = batch
+                inputs=inputs.to(self.device)
+                targets = targets.to(self.device)
+                masks =masks.to(self.device)
+                outputs = self.model(inputs.to(self.device))
+                ## addedcode
+                #print(f'targets = {targets.shape}')
+                #print('*****************************************************')
+                #print(f'outputs = {outputs[0].shape}');
+
+
+                ###########
+                #if isinstance(outputs, tuple):
+                    #outputs = outputs[0]
+                #assert outputs.shape == targets.shape
+                labels_clf, pred_masks = outputs
+                labels_clf, pred_masks =  labels_clf.to(self.device), pred_masks.to(self.device)
+
+                loss_clf = self.criterion_cls(labels_clf, targets)
+                loss_seg = self.criterion_seg(pred_masks, masks)
+                loss = loss_clf+0.5*loss_seg
+            else:
+                inputs, targets, patient_ids = batch
+                targets = targets.to(self.device)
+                outputs = self.model(inputs.to(self.device))
+                if isinstance(outputs, tuple):
+                    outputs = outputs[0]
+                # classification target shape should be [batch, num_classes] or [batch]
+                if len(targets.shape) > 1: targets = targets.squeeze()
+                loss = self.criterion_cls(outputs, targets)
+            #print('Done')
+
+            ###########################################
+            # Unpack batch safely
+            #if not self.segmentation:
+                # batch = (inputs, masks, targets, patient_ids)
+            '''
+            print("BATCH TYPES:", [type(x) for x in batch])
+            images, targets, patient_ids= batch  # unpack
+
+            print("DEBUG targets:", type(targets), getattr(targets, "shape", None))
+            outputs = self.model(images.to(self.device))
+
+            try:
+                inputs, masks, targets, patient_ids = batch
+                inputs, masks, targets = (
+                    inputs.to(self.device),
+                    masks.to(self.device),
+                    targets.to(self.device),
+                )
+                outputs = self.model(inputs)
+            #else:
+            except:
+                # batch = (inputs, targets, patient_ids)
+                inputs, targets, patient_ids = batch
+                inputs, targets = inputs.to(self.device), targets.to(self.device)
+                outputs = self.model(inputs)
+
+            # Compute loss
+            #print(f'outputs  ={outputs}////////')
+            #print(f'targets shape ={targets.shape}');exit()
+            #if isinstance(outputs, tuple) :#and len(targets) == 1:
+                #outputs = outputs[1]
+            #print("outputs:", outputs.shape, "targets:", type(targets), getattr(targets, "shape", None))
+            '''
+            #loss = self.criterion_cls(outputs, targets)
+            val_losses.append(loss.item())
+
+            # Update CV metric
+            self.metric.update(
+                preds=labels_clf.detach().cpu().numpy(),
+                targets=targets.detach().cpu().numpy(),
+                fold=fold,
+                seed=seed,
+                patient_idx=np.array(patient_ids),  # patient-level grouping
+            )
+
+        # Aggregate results
+        val_loss = float(np.mean(val_losses))
+        fold_score = self.metric.compute_fold_score(fold=fold, seed=seed)
+        summary = self.metric.summary()
+
+        # Logging
+        print(f"Validation Loss: {val_loss:.4f}")
+        print(f"Patient-level weighted CV (fold {fold}, seed {seed}): {summary['overall_average']:.4f}")
+        print("Per-class patient-level AUCs:")
+        for cls, auc in summary['per_class_auc_avg'].items():
+            print(f"  {cls}: {auc:.4f}")
+
+        return val_loss, summary
 
     def fit(self) -> None:
         for epoch in range(1, self.max_epochs + 1):

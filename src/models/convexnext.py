@@ -132,3 +132,90 @@ class ConvNeXt3D(nn.Module):
         x = self.head_norm(x)
         x = self.pool(x).flatten(1)
         return self.head(x)  # logits
+
+#################################################################################################################
+import torch
+import torch.nn as nn
+import timm
+
+
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import timm
+
+import torch
+import torch.nn as nn
+import timm
+
+
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+class MultiTaskModel(nn.Module):
+    def __init__(self, pretrained = True, num_classes=14, in_chans=1, seg_out_ch=1, segmentation = True):
+        super().__init__()
+        # Backbone (EfficientNetV2)
+        self.backbone = timm.create_model(
+            "tf_efficientnetv2_s.in21k_ft_in1k",
+            pretrained=pretrained,
+            in_chans=in_chans,
+            num_classes=14  # remove classification head
+        )  # timm backbone or ConvNeXt
+        self.in_chans = in_chans
+        self.num_classes = num_classes
+
+        # Convert single-channel input to 3 channels if backbone expects 3
+        if in_chans != 3:
+            self.input_conv = nn.Conv2d(in_chans, 3, kernel_size=1)
+        else:
+            self.input_conv = nn.Identity()
+
+        # Classification head
+        self.cls_pool = nn.AdaptiveAvgPool2d(1)
+        self.cls_linear = nn.Linear(self.backbone.num_features, num_classes)
+
+        # Segmentation decoder (example)
+        self.seg_decoder = nn.Sequential(
+            nn.Conv3d(self.backbone.num_features, 128, kernel_size=3, padding=1),
+            nn.BatchNorm3d(128),
+            nn.ReLU(inplace=True),
+            nn.Conv3d(128, seg_out_ch, kernel_size=1)
+        )
+
+    def forward(self, x):
+        """
+        x: [B, C, D, H, W] -> 5D tensor (depth included)
+        """
+        B, C, D, H, W = x.shape
+
+        # Flatten depth into batch for backbone
+        x = x.permute(0, 2, 1, 3, 4).contiguous()  # [B, D, C, H, W] -> [B*D, C, H, W]
+        x = x.view(B * D, C, H, W)
+
+        # Convert input channels if needed
+        x = self.input_conv(x)  # -> [B*D, 3, H, W] for backbone
+
+        # Backbone feature extraction
+        feats = self.backbone(x)  # assume feats: [B*D, feat_dim, H', W']
+
+        # -------------------
+        # Classification branch
+        # -------------------
+        cls_feat = self.cls_pool(feats)         # [B*D, feat_dim, 1, 1]
+        cls_feat = torch.flatten(cls_feat, 1)   # [B*D, feat_dim]
+        cls_out = self.cls_linear(cls_feat)     # [B*D, num_classes]
+        cls_out = cls_out.view(B, D, -1).mean(dim=1)  # [B, num_classes]
+
+        # -------------------
+        # Segmentation branch
+        # -------------------
+        seg_feat = feats.unsqueeze(2)           # [B*D, feat_dim, 1, H', W']
+        seg_out = self.seg_decoder(seg_feat)    # [B*D, 1, D_out, H_out, W_out]
+        seg_out = seg_out.view(B, D, seg_out.shape[1],
+                               seg_out.shape[2], seg_out.shape[3], seg_out.shape[4])
+        seg_out = seg_out.mean(dim=1)           # aggregate along depth -> [B, 1, D_out, H_out, W_out]
+
+        return cls_out, seg_out
+

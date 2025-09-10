@@ -198,3 +198,78 @@ class MultiTaskLoss(nn.Module):
         loss_seg = self.seg_loss(logits_seg, targets_seg)
         loss_loc = self.loc_loss(coords_pred, targets_coords)
         return self.cls_weight * loss_cls + self.seg_weight * loss_seg + self.loc_weight * loss_loc
+
+
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+class HardCustomLoss(nn.Module):
+    def __init__(self, device="cuda"):
+        super().__init__()
+
+        # Raw pos_weight values = neg/pos
+        raw_weights = torch.tensor([
+            53.41,  # L-ICA (Infraclinoid)
+            43.73,  # R-ICA (Infraclinoid)
+            12.74,  # L-ICA (Supraclinoid)
+            15.10,  # R-ICA (Supraclinoid)
+            18.83,  # L-MCA
+            13.86,  # R-MCA
+            10.71,  # AComm
+            86.52,  # L-ACA
+            73.56,  # R-ACA
+            46.93,  # L-PComm
+            39.26,  # R-PComm
+            35.60,  # Basilar Tip
+            35.60,  # Post. Circulation
+            1.34    # Any Aneurysm
+        ], dtype=torch.float32, device=device)
+
+        # 🔥 Normalize so mean = 1 (avoids exploding gradients)
+        self.register_buffer("pos_weight", raw_weights / raw_weights.mean())
+
+    def forward(self, logits, targets):
+        """
+        logits: (batch_size, num_classes)
+        targets: (batch_size, num_classes)
+        """
+        bce_loss = F.binary_cross_entropy_with_logits(
+            logits,
+            targets.float(),
+            pos_weight=self.pos_weight,
+            reduction="none"
+        )
+        return bce_loss.mean(dim=1).mean()
+
+
+
+
+##############################################################################################################
+
+def dice_loss(pred, target, eps=1e-6):
+    pred = torch.sigmoid(pred)
+    num = 2 * (pred * target).sum(dim=(2,3))
+    den = pred.sum(dim=(2,3)) + target.sum(dim=(2,3)) + eps
+    return 1 - (num / den).mean()
+
+
+class MultiTaskLoss(nn.Module):
+    def __init__(self, alpha=0.5, beta=1.0):
+        """
+        alpha = weight for segmentation
+        beta = weight for classification
+        """
+        super().__init__()
+        self.alpha = alpha
+        self.beta = beta
+        self.bce_logits = nn.BCEWithLogitsLoss()
+
+    def forward(self, cls_pred, cls_true, seg_pred, seg_true):
+        cls_loss = self.bce_logits(cls_pred, cls_true)
+        seg_loss = self.bce_logits(seg_pred, seg_true) + dice_loss(seg_pred, seg_true)
+        return self.alpha * seg_loss + self.beta * cls_loss, cls_loss, seg_loss
