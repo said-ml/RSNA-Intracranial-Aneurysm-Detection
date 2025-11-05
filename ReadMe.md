@@ -62,7 +62,7 @@ here the data compred and script python use it for that https://www.kaggle.com/c
 - **Hardware:GPU RTX 4070 (12GB VRAM)  
              CPU Ryzen 7 
              RAM = 32gb (2*16GB)
--            SSD : 1TB
+             SSD : 1TB
 - **Environment:** Ubuntu 22.04, CUDA 12.3  
 
 ---
@@ -91,4 +91,5 @@ Kaggle Expert – 2× Bronze Medals
 🌐 https://www.kaggle.com/saidkoussi
 
 ---
+
 
