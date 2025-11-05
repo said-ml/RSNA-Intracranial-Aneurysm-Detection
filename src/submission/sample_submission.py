@@ -19,7 +19,7 @@ LABEL_COLS = [
     "Other Posterior Circulation",
     "Aneurysm Present",
 ]
-df = pd.read_csv(r"C:/Users/Setup Game/Music/Favorites/Downloads/rsna_preprocessed_segmentation/labels.csv")
+df = pd.read_csv(r"/home/saidkoussi/Downloads/rsna_48_384_384/extracted/labels.csv")
 labels = df[LABEL_COLS].values.astype(float)
 #print(f'labels shape={labels}')
 ##########################################################################################################################################################

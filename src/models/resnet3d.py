@@ -184,8 +184,15 @@ class ResNet3D(nn.Module):
         self.inplanes = 64
         self.segmentation = segmentation
 
-        self.conv1 = nn.Conv3d(in_channels, 64, kernel_size=7,
-                               stride=(2, 2, 2), padding=(3, 3, 3), bias=False)
+        self.conv1 =  nn.Conv3d( in_channels=2,  # <<< changed from 1 to 2
+                                 out_channels=64,
+                                 kernel_size=(7, 7, 7),
+                                 stride=(2, 2, 2),
+                                 padding=(3, 3, 3),
+                                 bias=False
+                                 )
+
+
         self.bn1 = nn.BatchNorm3d(64)
         self.relu = nn.ReLU(inplace=True)
         self.maxpool = nn.MaxPool3d(kernel_size=3, stride=2, padding=1)

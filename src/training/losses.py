@@ -131,6 +131,13 @@ class SoftDiceLoss(nn.Module):
 
     def forward(self, preds, targets):
         # preds: logits -> apply sigmoid
+        ########## addedcode for debuuging-----##########
+        if preds.ndim == 4:  # (B, D, H, W)
+            preds = preds.unsqueeze(1)  # -> (B, 1, D, H, W)
+        if targets.ndim == 4:
+            targets = targets.unsqueeze(1)
+
+        ##################################################
         preds = torch.sigmoid(preds)
         intersection = (preds * targets).sum(dim=(1, 2, 3, 4))
         union = preds.sum(dim=(1, 2, 3, 4)) + targets.sum(dim=(1, 2, 3, 4))
@@ -181,8 +188,8 @@ class MultiTaskLoss(nn.Module):
     """
 
     def __init__(self,
-                 cls_weight: float = 1.0,
-                 seg_weight: float = 1.0,
+                 cls_weight: float = 0.1,
+                 seg_weight: float = 0.0,
                  loc_weight: float = 1.0,
                  ):
         super().__init__()
@@ -193,10 +200,15 @@ class MultiTaskLoss(nn.Module):
         self.seg_weight = seg_weight
         self.loc_weight = loc_weight
 
-    def forward(self, logits_cls, logits_seg, coords_pred, targets_cls, targets_seg, targets_coords):
+    def forward(self, logits_cls, logits_seg, cords_pred, targets_cls, targets_seg, targets_cords):
         loss_cls = self.cls_loss(logits_cls, targets_cls)
         loss_seg = self.seg_loss(logits_seg, targets_seg)
-        loss_loc = self.loc_loss(coords_pred, targets_coords)
+        ############ added #######################
+        #print(f'pseudo seg ={targets_cords.shape}')
+        #print(f'pred pseudo seg ={cords_pred.shape}');exit()
+        #loss_loc  = self.seg_loss(cords_pred, targets_cords)
+        ####################
+        loss_loc = self.loc_loss(cords_pred.float(), targets_cords.float())
         return self.cls_weight * loss_cls + self.seg_weight * loss_seg + self.loc_weight * loss_loc
 
 
@@ -258,7 +270,7 @@ def dice_loss(pred, target, eps=1e-6):
     return 1 - (num / den).mean()
 
 
-class MultiTaskLoss(nn.Module):
+class MultiTaskLoss2(nn.Module):
     def __init__(self, alpha=0.5, beta=1.0):
         """
         alpha = weight for segmentation

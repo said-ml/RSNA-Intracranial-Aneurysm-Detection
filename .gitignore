@@ -1,8 +1,8 @@
-# Ignore PyTorch/TensorFlow checkpoints
+# Ignore PyTorch/checkpoints
 *.ckpt
 *.pt
 *.pth
-*.h5
+
 
 # Ignore temporary/backup files
 *.tmp

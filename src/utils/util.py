@@ -83,11 +83,11 @@ def pretty_print_cv(metrics: dict):
     print("Class".ljust(40), "AUC")
     print("-" * 50)
     for cls, auc in sorted_auc:
-        flag = "✅" if auc >= 0.7 else "⚠" if auc >= 0.5 else "❌"
+        flag = "Good" if auc >= 0.7 else "!" if auc >= 0.5 else "Bad"
         print(f"{cls.ljust(40)} {auc:.4f} {flag}")
 
     print("\n🔹 Weighted RSNA-style CV metric:", f"{weighted_auc:.4f}")
-    print("✅ Green: ≥0.7 | ⚠ Yellow: 0.5–0.7 | ❌ Red: <0.5\n")
+    print("Good : ≥0.7 | Medium: 0.5–0.7 | Bad : <0.5\n")
 
 #################################### FOR IMBALANCED DATA #########################################
 

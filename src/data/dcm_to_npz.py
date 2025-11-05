@@ -1,3 +1,6 @@
+# check out my data preaparation notebook (there are 4 versions == 4 Target Size)
+# https://www.kaggle.com/code/saidkoussi/data-preaparation
+
 # ================================================================
 # RSNA Reduction Pipeline — Compact mode for Kaggle 19GB target
 # - TARGET_SHAPE=(16,256,256), 2 windows, uint8 quantization
